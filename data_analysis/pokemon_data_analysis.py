@@ -20,10 +20,13 @@
 
 # Install dependencies not available in the default Databricks runtime
 # (requests is already available, this is just for explicitness)
-%pip install requests --quiet
+%pip install requests seaborn --quiet
 
 # COMMAND ----------
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 import logging
 import os
 from dataclasses import asdict
@@ -42,6 +45,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
 )
 logger = logging.getLogger("picpay.case.part1")
+
+sns.set_theme()
+FIGSIZE = (12, 7)
 
 try:
     spark  # noqa: F821 — injected by Databricks
@@ -338,6 +344,46 @@ print("  Top 10 by strength:")
 )
 
 # COMMAND ----------
+
+df_q1_plot = (
+    df_q1
+    .join(df_pokemon.select("pokemon_id", "name"), on="pokemon_id")
+    .orderBy(F.col("total_strength").desc())
+    .limit(20)
+    .select("name", "total_strength")
+    .toPandas()
+    .sort_values("total_strength", ascending=False)
+)
+
+fig, ax = plt.subplots(figsize=FIGSIZE)
+
+sns.barplot(
+    data=df_q1_plot,
+    x="name",
+    y="total_strength",
+    palette="Blues_d",
+    ax=ax,
+)
+
+ax.axhline(
+    avg_strength,
+    color="crimson",
+    linestyle="--",
+    linewidth=1.8,
+    label=f"Avg strength ({avg_strength:.0f})",
+)
+
+ax.set_title("Multi-type Pokémons Above Average Strength", fontweight="bold", pad=14)
+ax.set_xlabel("Pokémon")
+ax.set_ylabel("Total Strength (sum of base stats)")
+ax.tick_params(axis="x")
+ax.legend()
+
+plt.tight_layout()
+plt.show()
+
+
+# COMMAND ----------
 # MAGIC %md
 # MAGIC ### Q2: Abilities exclusive to multi-type pokémons <a id="q2"></a>
 # MAGIC
@@ -393,6 +439,49 @@ print(f"\n  Abilities exclusive to multi-type pokémons: {answer_q2}\n")
 df_q2.show(30, truncate=False)
 
 # COMMAND ----------
+
+df_q2_plot = (
+    df_q2
+    .join(df_ability.select("ability_name", "pokemon_id"), on="ability_name")
+    .groupBy("ability_name")
+    .agg(F.countDistinct("pokemon_id").alias("pokemon_count"))
+    .orderBy(F.col("pokemon_count").desc())
+    .limit(20)
+    .toPandas()
+    .sort_values("pokemon_count", ascending=True)
+)
+
+fig, ax = plt.subplots(figsize=(FIGSIZE[0], 7))
+
+sns.barplot(
+    data=df_q2_plot,
+    x="pokemon_count",
+    y="ability_name",
+    palette="flare",
+    ax=ax,
+)
+
+for bar, val in zip(ax.patches, df_q2_plot["pokemon_count"]):
+    ax.text(
+        bar.get_width() + 0.15,
+        bar.get_y() + bar.get_height() / 2,
+        str(int(val)),
+        va="center",
+        fontsize=10,
+    )
+
+ax.set_title(
+    "Top Abilities Exclusive to Multi-type Pokémons\n(by number of pokémons that have them)",
+    fontweight="bold",
+    pad=14,
+)
+ax.set_xlabel("Number of Pokémons")
+ax.set_ylabel("Ability")
+
+plt.tight_layout()
+plt.show()
+
+# COMMAND ----------
 # MAGIC %md
 # MAGIC ### Q3: Top 5 most versatile pokémons <a id="q3"></a>
 # MAGIC
@@ -442,6 +531,75 @@ print("=" * 65)
 print("  Q3 RESULT — Top 5 Most Versatile Pokémons")
 print("=" * 65)
 df_q3.show(truncate=False)
+
+# COMMAND ----------
+
+df_q3_plot = (
+    df_versatility
+    .join(
+        df_q3.select("name"),
+        on="name"
+    )
+    .withColumn("types_component",    F.col("num_types") * 2)
+    .withColumn("abilities_component", F.col("num_abilities").cast("double"))
+    .withColumn("stats_component",    F.col("total_strength") / 100)
+    .select("name", "types_component", "abilities_component", "stats_component")
+    .toPandas()
+    .sort_values(
+        by=["types_component", "abilities_component", "stats_component"],
+        ascending=False
+    )
+)
+
+df_long = df_q3_plot.melt(
+    id_vars="name",
+    value_vars=["stats_component", "abilities_component", "types_component"],
+    var_name="component",
+    value_name="value",
+)
+
+COMPONENT_LABELS = {
+    "types_component":     "Types × 2",
+    "abilities_component": "Num Abilities",
+    "stats_component":     "Sum Stats ÷ 100",
+}
+COMPONENT_COLORS = {
+    "Types × 2":       "#2196F3",
+    "Num Abilities":   "#FF9800",
+    "Sum Stats ÷ 100": "#4CAF50",
+}
+
+df_long["component"] = df_long["component"].map(COMPONENT_LABELS)
+
+fig, ax = plt.subplots(figsize=FIGSIZE)
+
+bottom = pd.Series([0.0] * len(df_q3_plot), index=range(len(df_q3_plot)))
+names = df_q3_plot["name"].tolist()
+
+for component, color in COMPONENT_COLORS.items():
+    values = df_long[df_long["component"] == component].set_index("name").loc[names, "value"].values
+    bars = ax.bar(names, values, bottom=bottom, label=component, color=color, alpha=0.85, width=0.5)
+    for bar, val, bot in zip(bars, values, bottom):
+        if val > 0.5:
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bot + val / 2,
+                f"{val:.1f}",
+                ha="center",
+                va="center",
+                fontsize=9.5,
+                color="white",
+                fontweight="bold",
+            )
+    bottom += values
+
+ax.set_title("Top 5 Most Versatile Pokémons — Score Breakdown", fontweight="bold", pad=14)
+ax.set_ylabel("Versatility Score")
+ax.legend(title="Score Component", loc="upper right")
+
+plt.tight_layout()
+plt.show()
+
 
 # COMMAND ----------
 # MAGIC %md
