@@ -271,3 +271,68 @@ df_stats.show(5)
 
 print("=== pokemon_ability ===")
 df_ability.show(5)
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## 4. Stage 3 — Spark Analyses <a id="analyses"></a>
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ### Q1: Pokémons with multiple types and above-average strength <a id="q1"></a>
+# MAGIC
+# MAGIC **Definition of strength:** sum of all `base_stat` values for a pokémon.
+# MAGIC
+# MAGIC **Question:** How many pokémons have more than one `type_name`
+# MAGIC and have strength greater than the overall average strength?
+
+# COMMAND ----------
+
+# ---------------------------------------------------------------------------
+# Step 1 — Compute total strength per pokémon (sum of all base_stats)
+# ---------------------------------------------------------------------------
+df_strength = (
+    df_stats
+    .groupBy("pokemon_id")
+    .agg(F.sum("base_stat").alias("total_strength"))
+)
+
+# Step 2 — Compute the global average strength (single scalar)
+avg_strength = df_strength.agg(F.avg("total_strength")).collect()[0][0]
+print(f"Global average strength: {avg_strength:.2f}")
+
+# Step 3 — Count types per pokémon
+df_type_count = (
+    df_type
+    .groupBy("pokemon_id")
+    .agg(F.count("type_name").alias("num_types"))
+)
+
+# Step 4 — Join strength + type count, then filter
+df_q1 = (
+    df_strength
+    .join(df_type_count, on="pokemon_id", how="inner")
+    .filter(
+        (F.col("num_types") > 1) &
+        (F.col("total_strength") > avg_strength)
+    )
+)
+
+answer_q1 = df_q1.count()
+
+# COMMAND ----------
+
+print("=" * 55)
+print("  Q1 RESULT")
+print("=" * 55)
+print(f"\n  Pokémons with > 1 type AND strength > avg ({avg_strength:.2f}):")
+print(f"\n  ➜  {answer_q1} pokémons\n")
+
+# Show the top 10 by strength for context
+print("  Top 10 by strength:")
+(
+    df_q1
+    .join(df_pokemon.select("pokemon_id", "name"), on="pokemon_id")
+    .orderBy(F.col("total_strength").desc())
+    .select("name", "num_types", "total_strength")
+    .show(10, truncate=False)
+)
