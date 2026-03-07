@@ -336,3 +336,58 @@ print("  Top 10 by strength:")
     .select("name", "num_types", "total_strength")
     .show(10, truncate=False)
 )
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ### Q2: Abilities exclusive to multi-type pokémons <a id="q2"></a>
+# MAGIC
+# MAGIC **Question:** Which abilities do NOT appear in any single-type pokémon?
+# MAGIC In other words, abilities that exist **only** in pokémons with 2+ types.
+
+# COMMAND ----------
+
+# ---------------------------------------------------------------------------
+# Step 1 — Label each pokémon as single-type or multi-type
+# ---------------------------------------------------------------------------
+df_pokemon_type_label = (
+    df_type_count
+    .withColumn(
+        "is_multi_type",
+        F.when(F.col("num_types") > 1, True).otherwise(False)
+    )
+)
+
+# Step 2 — Join abilities with the type label
+df_ability_labeled = (
+    df_ability
+    .join(df_pokemon_type_label.select("pokemon_id", "is_multi_type"),
+          on="pokemon_id",
+          how="inner")
+)
+
+# Step 3 — For each ability, check if it EVER appears in a single-type pokémon
+df_ability_in_single = (
+    df_ability_labeled
+    .filter(F.col("is_multi_type") == False)  # noqa: E712
+    .select("ability_name")
+    .distinct()
+)
+
+# Step 4 — Keep only abilities NOT in the single-type set
+df_q2 = (
+    df_ability_labeled
+    .select("ability_name")
+    .distinct()
+    .join(df_ability_in_single, on="ability_name", how="left_anti")
+    .orderBy("ability_name")
+)
+
+answer_q2 = df_q2.count()
+
+# COMMAND ----------
+
+print("=" * 55)
+print("  Q2 RESULT")
+print("=" * 55)
+print(f"\n  Abilities exclusive to multi-type pokémons: {answer_q2}\n")
+df_q2.show(30, truncate=False)
