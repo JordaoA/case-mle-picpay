@@ -52,13 +52,13 @@ except NameError:
 
 spark.conf.set("spark.sql.shuffle.partitions", "8")  # suitable for this dataset size
 
-ON_DATABRICKS = os.path.exists("/dbfs")
-BASE_OUTPUT_PATH = (
-    "/dbfs/FileStore/picpay-case/data"
-    if ON_DATABRICKS
-    else "data/processed"
-)
-logger.info(f"Output path: {BASE_OUTPUT_PATH} | On Databricks: {ON_DATABRICKS}")
+ON_DATABRICKS = os.path.exists("/databricks")
+DATABASE_NAME = "picpay_case"
+
+if ON_DATABRICKS:
+    spark.sql(f"CREATE DATABASE IF NOT EXISTS {DATABASE_NAME}")
+    spark.sql(f"USE {DATABASE_NAME}")
+    logger.info(f"Using Hive metastore database: {DATABASE_NAME}")
 
 # COMMAND ----------
 # MAGIC %md
