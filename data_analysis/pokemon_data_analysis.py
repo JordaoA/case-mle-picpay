@@ -391,3 +391,70 @@ print("  Q2 RESULT")
 print("=" * 55)
 print(f"\n  Abilities exclusive to multi-type pokémons: {answer_q2}\n")
 df_q2.show(30, truncate=False)
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ### Q3: Top 5 most versatile pokémons <a id="q3"></a>
+# MAGIC
+# MAGIC **Versatility score formula:**
+# MAGIC ```
+# MAGIC versatility_score = (num_types * 2) + (num_abilities) + (sum_stats / 100)
+# MAGIC ```
+
+# COMMAND ----------
+
+# ---------------------------------------------------------------------------
+# Step 1 — Count abilities per pokémon
+# ---------------------------------------------------------------------------
+df_ability_count = (
+    df_ability
+    .groupBy("pokemon_id")
+    .agg(F.count("ability_name").alias("num_abilities"))
+)
+
+# Step 2 — Assemble all metrics per pokémon in a single DataFrame
+df_versatility = (
+    df_pokemon.select("pokemon_id", "name")
+    .join(df_type_count,     on="pokemon_id", how="left")
+    .join(df_ability_count,  on="pokemon_id", how="left")
+    .join(df_strength,       on="pokemon_id", how="left")
+    # Fill nulls for pokémons that might be missing some data
+    .fillna({"num_types": 0, "num_abilities": 0, "total_strength": 0})
+)
+
+# Step 3 — Compute the versatility score
+df_q3 = (
+    df_versatility
+    .withColumn(
+        "versatility_score",
+        (F.col("num_types") * 2)
+        + F.col("num_abilities")
+        + (F.col("total_strength") / 100)
+    )
+    .orderBy(F.col("versatility_score").desc())
+    .limit(5)
+    .select("name", "num_types", "num_abilities", "total_strength", "versatility_score")
+)
+
+# COMMAND ----------
+
+print("=" * 65)
+print("  Q3 RESULT — Top 5 Most Versatile Pokémons")
+print("=" * 65)
+df_q3.show(truncate=False)
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## Summary
+# MAGIC
+# MAGIC | Question | Answer |
+# MAGIC |---|---|
+# MAGIC | **Q1** — Pokémons with >1 type AND strength > avg | See cell output |
+# MAGIC | **Q2** — Abilities exclusive to multi-type pokémons | See cell output |
+# MAGIC | **Q3** — Top 5 most versatile pokémons | See cell output |
+# MAGIC
+# MAGIC ---
+# MAGIC **Data pipeline:**
+# MAGIC `PokeAPI REST` → `PokeAPIExtractor (concurrent)` → `ExtractedData (dataclasses)`
+# MAGIC → `Spark DataFrames` → `Quality Checks` → `Delta / Parquet`
+# MAGIC → `Spark SQL Analyses`
