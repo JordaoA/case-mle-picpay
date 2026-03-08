@@ -51,10 +51,6 @@ class MLflowRegistry:
             f"experiment: '{settings.mlflow_experiment_name}'"
         )
 
-    # ------------------------------------------------------------------
-    # Model registration
-    # ------------------------------------------------------------------
-
     def register_model(self, model_name: str) -> dict:
         """
         Registers a spaCy model in the MLflow Model Registry.
@@ -123,10 +119,6 @@ class MLflowRegistry:
             "stage":   STAGE_PRODUCTION,
             "run_id":  run.info.run_id,
         }
-
-    # ------------------------------------------------------------------
-    # Model queries
-    # ------------------------------------------------------------------
 
     def get_model_info(self, model_name: str) -> Optional[dict]:
         """
@@ -199,10 +191,6 @@ class MLflowRegistry:
         except mlflow.exceptions.MlflowException as exc:
             raise ValueError(f"Model '{model_name}' not found in registry: {exc}")
 
-    # ------------------------------------------------------------------
-    # Prediction logging
-    # ------------------------------------------------------------------
-
     def log_prediction(
         self,
         model_name: str,
@@ -247,10 +235,6 @@ class MLflowRegistry:
             # Prediction logging should never break the inference response
             logger.warning(f"Failed to log prediction to MLflow: {exc}")
             return ""
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
 
     def _ensure_experiment(self) -> str:
         """Creates the MLflow experiment if it doesn't exist yet."""
