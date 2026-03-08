@@ -20,8 +20,6 @@ if not Path(dotenv_path).exists():
 
 load_dotenv(dotenv_path)
 
-
-
 class Settings(BaseSettings):
     # MLflow
     mlflow_host: str = Field(
@@ -46,10 +44,27 @@ class Settings(BaseSettings):
         default=os.getenv("SERVICE_VERSION"),
         alias="SERVICE_VERSION",
     )
-    
+
+    # Redis
+    redis_host: str = Field(
+        default=os.getenv("REDIS_HOST"),
+        alias="REDIS_HOST",
+    )
+    redis_port: int = Field(
+        default=int(os.getenv("REDIS_PORT")),
+        alias="REDIS_PORT",
+    )
+    redis_db: int = Field(
+        default=int(os.getenv("REDIS_DB")),
+        alias="REDIS_DB",
+    )
+    redis_password: str = Field(
+        default=os.getenv("REDIS_PASSWORD"),
+        alias="REDIS_PASSWORD",
+    )
+
     @property
     def mlflow_tracking_uri(self) -> str:
-        print(self.mlflow_host, self.mlflow_port, self.mlflow_experiment_name, self.service_name, self.service_version)
         return f"http://{self.mlflow_host}:{self.mlflow_port}"
 
     class Config:

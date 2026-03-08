@@ -1,5 +1,28 @@
 services:
 
+  redis:
+    image: redis:7.2-alpine
+    container_name: picpay-redis
+    environment:
+      - REDIS_HOST=172.18.0.3
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_PASSWORD=your-password
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data              # RDB snapshots persist across restarts
+    command: >
+      redis-server
+        --appendonly yes
+        --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.13.0
     container_name: picpay-mlflow
@@ -22,5 +45,7 @@ services:
       start_period: 10s
 
 volumes:
-  mlflow_data:                        # named volume — survives container restarts
+  redis_data:                         # RDB + AOF files
+    driver: local
+  mlflow_data:                        # SQLite DB + artifacts
     driver: local
