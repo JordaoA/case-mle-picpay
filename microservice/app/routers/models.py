@@ -4,9 +4,9 @@ routers/models.py
 Endpoints related to model lifecycle management.
 
 Routes:
-    POST   /load/              — Download and register a spaCy model
-    GET    /models/            — List all available models
-    DELETE /models/{model_name} — Remove a model from the registry
+    POST   /load/                — Download and register a spaCy model in MLflow
+    GET    /models/              — List all models from MLflow registry
+    DELETE /models/{model_name}  — Archive a model in MLflow and evict from cache
 """
 
 import logging
@@ -19,7 +19,8 @@ from app.schemas.requests import (
     LoadModelResponse,
     ModelInfo,
 )
-from app.services import model_manager
+from app.services.model_manager import model_manager
+from app.services.mlflow_registry import mlflow_registry
 
 logger = logging.getLogger("ner_service.router.models")
 router = APIRouter(tags=["Models"])
@@ -29,47 +30,53 @@ router = APIRouter(tags=["Models"])
     "/load/",
     response_model=LoadModelResponse,
     status_code=status.HTTP_200_OK,
-    summary="Download and register a spaCy model",
+    summary="Download, register and promote a spaCy model to Production in MLflow",
 )
 def load_model(payload: LoadModelRequest) -> LoadModelResponse:
     """
-    Checks if the requested spaCy model is already installed.
-    If not, downloads it and makes it available for inference.
+    Downloads the spaCy model if not already installed, then:
+    - Creates a RegisteredModel entry in MLflow (if first time)
+    - Logs a new ModelVersion with metadata (spaCy version, timestamp)
+    - Transitions the new version to **Production**
+    - Archives any previous Production version automatically
     """
     logger.info(f"Load request received for model: '{payload.model}'")
 
     try:
-        result_status = model_manager.ensure_available(payload.model)
+        download_status = model_manager.ensure_available(payload.model)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except RuntimeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    # Fetch the MLflow registration result for the response
+    model_info = mlflow_registry.get_model_info(payload.model)
 
     messages = {
-        "downloaded": f"Model '{payload.model}' downloaded and registered successfully.",
-        "already_available": f"Model '{payload.model}' is already available.",
+        "downloaded":       f"Model '{payload.model}' downloaded and registered in MLflow.",
+        "already_available": f"Model '{payload.model}' already available — new version registered.",
     }
 
     return LoadModelResponse(
         model=payload.model,
-        status=result_status,
-        message=messages[result_status],
+        status=download_status,
+        message=messages[download_status],
+        mlflow_version=model_info["version"] if model_info else None,
+        mlflow_stage=model_info["stage"] if model_info else None,
+        mlflow_run_id=model_info["run_id"] if model_info else None,
     )
 
 
 @router.get(
     "/models/",
     response_model=ListModelsResponse,
-    summary="List all available models",
+    summary="List all models from the MLflow registry",
 )
 def list_models() -> ListModelsResponse:
-    """Returns all models that have been downloaded, with their load status."""
+    """
+    Returns all registered models from MLflow, enriched with
+    whether they are currently loaded in the in-memory cache.
+    """
     models = model_manager.list_models()
     return ListModelsResponse(
         models=[ModelInfo(**m) for m in models]
@@ -79,21 +86,21 @@ def list_models() -> ListModelsResponse:
 @router.delete(
     "/models/{model_name}",
     status_code=status.HTTP_200_OK,
-    summary="Remove a model from the registry",
+    summary="Archive a model in MLflow and evict from memory cache",
 )
 def delete_model(model_name: str) -> dict:
     """
-    Unloads a model from memory and removes it from the available registry.
-    Does NOT uninstall the spaCy package — just de-registers it from this service.
+    Archives all versions of the model in the MLflow registry
+    and evicts it from the in-memory cache.
+
+    Note: This does NOT uninstall the spaCy package or hard-delete
+    the MLflow entry — the audit history is preserved.
     """
     logger.info(f"Delete request for model: '{model_name}'")
 
     try:
         model_manager.delete(model_name)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
-    return {"message": f"Model '{model_name}' removed from registry."}
+    return {"message": f"Model '{model_name}' archived in MLflow and evicted from cache."}
