@@ -9,6 +9,8 @@ import logging
 import logging.config
 from fastapi import FastAPI
 
+from app.routers import models
+
 LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -48,3 +50,5 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+app.include_router(models.router)
