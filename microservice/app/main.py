@@ -9,7 +9,7 @@ import logging
 import logging.config
 from fastapi import FastAPI
 
-from app.routers import models
+from app.routers import models, predictions
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -52,3 +52,4 @@ app = FastAPI(
 )
 
 app.include_router(models.router)
+app.include_router(predictions.router)

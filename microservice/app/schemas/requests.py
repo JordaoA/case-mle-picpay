@@ -6,6 +6,8 @@ Centralizing schemas here keeps routers clean and enables easy reuse.
 """
 from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import datetime
+
 
 class LoadModelRequest(BaseModel):
     model: str = Field(
@@ -36,3 +38,44 @@ class ModelInfo(BaseModel):
 
 class ListModelsResponse(BaseModel):
     models: list[ModelInfo]
+
+
+class EntityResult(BaseModel):
+    label: str = Field(description="NER entity label (e.g. PERSON, MONEY, DATE).")
+    text: str = Field(description="Extracted entity text.")
+    start: int = Field(description="Character start offset in the input text.")
+    end: int = Field(description="Character end offset in the input text.")
+
+
+class PredictionRecord(BaseModel):
+    id: int
+    input_text: str
+    output: list[EntityResult]
+    model: str
+    timestamp: datetime
+
+
+class ListPredictionsResponse(BaseModel):
+    total: int
+    predictions: list[PredictionRecord]
+
+
+class PredictResponse(BaseModel):
+    model: str
+    model_version: str = "unknown"
+    text: str
+    entities: list[EntityResult]
+    timestamp: datetime
+
+
+class PredictRequest(BaseModel):
+    text: str = Field(
+        ...,
+        description="Text (in English) to run NER inference on.",
+        examples=["Can you send $45 to Michael on June 3?"],
+    )
+    model: str = Field(
+        ...,
+        description="spaCy model name to use for inference.",
+        examples=["en_core_web_sm"],
+    )
