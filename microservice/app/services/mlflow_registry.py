@@ -25,10 +25,7 @@ from typing import Optional
 import mlflow
 import spacy
 from mlflow import MlflowClient
-from mlflow.entities.model_registry.model_version_stages import (
-    STAGE_PRODUCTION,
-    STAGE_STAGING,
-)
+from mlflow.entities.model_registry.model_version_stages import STAGE_PRODUCTION
 
 from app.config import settings
 
@@ -73,7 +70,6 @@ class MLflowRegistry:
             experiment_id=self._experiment_id,
             run_name=f"register-{model_name}",
         ) as run:
-            # Log metadata about this registration event
             mlflow.log_params({
                 "model_name":    model_name,
                 "spacy_version": spacy_version,
@@ -84,9 +80,6 @@ class MLflowRegistry:
                 "service":      settings.service_name,
             })
 
-            # Register this run as a versioned model artifact
-            # We use a dummy artifact URI since spaCy models live in site-packages,
-            # not in the MLflow artifact store. The registry entry tracks metadata only.
             model_uri = f"runs:/{run.info.run_id}/model"
 
             try:
@@ -99,7 +92,7 @@ class MLflowRegistry:
                     f"Could not register model artifact (expected for spaCy models "
                     f"without a logged artifact): {exc}. Registering metadata only."
                 )
-                # Create a version directly via the client as a fallback
+
                 mv = self._client.create_model_version(
                     name=model_name,
                     source=f"spacy://{model_name}",
@@ -107,7 +100,6 @@ class MLflowRegistry:
                     description=f"spaCy {model_name} v{spacy_version}",
                 )
 
-        # Demote existing Production → Archived, then promote new version
         self._promote_to_production(model_name, mv.version)
 
         logger.info(
@@ -130,7 +122,6 @@ class MLflowRegistry:
                 model_name, stages=[STAGE_PRODUCTION]
             )
             if not versions:
-                # Fall back to any stage
                 versions = self._client.get_latest_versions(model_name)
             if not versions:
                 return None
@@ -232,7 +223,6 @@ class MLflowRegistry:
                 })
                 return run.info.run_id
         except Exception as exc:
-            # Prediction logging should never break the inference response
             logger.warning(f"Failed to log prediction to MLflow: {exc}")
             return ""
 
@@ -284,5 +274,25 @@ class MLflowRegistry:
         )
 
 
-# Singleton
-mlflow_registry = MLflowRegistry()
+_registry_instance: "MLflowRegistry | None" = None
+
+
+def _get_registry() -> "MLflowRegistry":
+    global _registry_instance
+    if _registry_instance is None:
+        _registry_instance = MLflowRegistry()
+    return _registry_instance
+
+
+class _LazyRegistry:
+    """
+    Transparent proxy for MLflowRegistry.
+    Forwards every attribute access to the real instance, creating it on
+    first use. This lets the rest of the codebase use `mlflow_registry.x`
+    exactly as before without any changes to call sites.
+    """
+    def __getattr__(self, name: str):
+        return getattr(_get_registry(), name)
+
+
+mlflow_registry = _LazyRegistry()
