@@ -21,19 +21,26 @@ class ModelInfo(BaseModel):
     name: str
     version: str = "—"
     stage: str = "—"
-    loaded: bool = False              # True if currently in memory cache
+    loaded: bool = False
     run_id: Optional[str] = None
 
 
 class LoadModelResponse(BaseModel):
     model: str
-    status: str  # "downloaded" | "already_available"
+    status: str
     message: str
+    mlflow_version: Optional[str] = None
+    mlflow_stage: Optional[str] = None
+    mlflow_run_id: Optional[str] = None
 
 
 class ModelInfo(BaseModel):
     name: str
-    status: str  # "loaded" | "available"
+    status: str = "—"
+    version: str = "—"
+    stage: str = "—"
+    loaded: bool = False 
+    run_id: Optional[str] = None
 
 
 class ListModelsResponse(BaseModel):
@@ -79,3 +86,16 @@ class PredictRequest(BaseModel):
         description="spaCy model name to use for inference.",
         examples=["en_core_web_sm"],
     )
+    
+
+class HealthResponse(BaseModel):
+    status: str
+    loaded_models: list[str]
+    total_predictions: int
+    history_backend: str
+    redis_connected: bool 
+    
+
+class ErrorResponse(BaseModel):
+    error: str
+    detail: Optional[str] = None
