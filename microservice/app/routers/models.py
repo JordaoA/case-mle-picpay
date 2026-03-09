@@ -49,7 +49,6 @@ def load_model(payload: LoadModelRequest) -> LoadModelResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
 
-    # Fetch the MLflow registration result for the response
     model_info = mlflow_registry.get_model_info(payload.model)
 
     messages = {

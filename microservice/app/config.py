@@ -73,6 +73,4 @@ class Settings(BaseSettings):
     class Config:
         env_file_encoding = "utf-8"
 
-
-# Singleton — imported everywhere
 settings = Settings()
