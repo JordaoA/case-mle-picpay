@@ -11,7 +11,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data              # RDB snapshots persist across restarts
+      - redis_data:/data
     command: >
       redis-server
         --appendonly yes
@@ -29,7 +29,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - mlflow_data:/mlflow            # persists SQLite DB and artifacts
+      - mlflow_data:/mlflow
     command: >
       mlflow server
         --host 0.0.0.0
@@ -45,7 +45,7 @@ services:
       start_period: 10s
 
 volumes:
-  redis_data:                         # RDB + AOF files
+  redis_data:
     driver: local
-  mlflow_data:                        # SQLite DB + artifacts
+  mlflow_data:
     driver: local
