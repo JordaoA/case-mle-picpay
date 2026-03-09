@@ -1,0 +1,78 @@
+services:
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: picpay-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+        --appendonly yes
+        --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.13.0
+    container_name: picpay-mlflow
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri sqlite:////mlflow/mlflow.db
+        --default-artifact-root /mlflow/artifacts
+        --serve-artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  ner-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime           # uses the lean production stage
+    container_name: picpay-ner-service
+    ports:
+      - "${SERVICE_PORT:-8000}:8000"
+    environment:
+      PYTHONUNBUFFERED: "1"
+      # MLflow
+      MLFLOW_HOST: ${MLFLOW_HOST:-mlflow}
+      MLFLOW_PORT: ${MLFLOW_PORT:-5000}
+      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-ner-inference-service}
+      # Redis
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # Service metadata
+      SERVICE_NAME: ${SERVICE_NAME:-picpay-ner-service}
+      SERVICE_VERSION: ${SERVICE_VERSION:-1.0.0}
+    depends_on:
+      redis:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+  mlflow_data:
+    driver: local
