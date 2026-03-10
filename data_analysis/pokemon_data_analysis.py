@@ -38,6 +38,7 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+    ArrayType
 )
 
 logging.basicConfig(
@@ -100,18 +101,15 @@ extractor = PokeAPIExtractor(
     retry_attempts=3,
 )
 
-# Set limit=None to fetch ALL pokémons (~1300)
-# Set limit=20 for a fast test run
 EXTRACT_LIMIT = 20
 
-logger.info(f"Starting extraction — limit={EXTRACT_LIMIT or 'ALL'}")
-raw_data = extractor.fetch_all_pokemon(limit=EXTRACT_LIMIT)
+logger.info(f"Starting distributed extraction — limit={EXTRACT_LIMIT or 'ALL'}")
 
-print(f"\n Extraction complete:")
-print(f"   pokemon   : {len(raw_data.pokemon):>5} records")
-print(f"   types     : {len(raw_data.types):>5} records")
-print(f"   stats     : {len(raw_data.stats):>5} records")
-print(f"   abilities : {len(raw_data.abilities):>5} records")
+df_raw = extractor.fetch_all_pokemon(spark, limit=EXTRACT_LIMIT)
+
+extracted_count = df_raw.cache().count()
+
+print(f"\n Extraction complete: {extracted_count} pokémons fetched.")
 
 # COMMAND ----------
 # MAGIC %md
@@ -127,60 +125,70 @@ print(f"   abilities : {len(raw_data.abilities):>5} records")
 # MAGIC | `pokemon_ability` | `(pokemon_id, ability_name)` | One row per ability per pokémon |
 
 # COMMAND ----------
-
-SCHEMA_POKEMON = StructType([
-    StructField("pokemon_id",       IntegerType(), nullable=False),
-    StructField("name",             StringType(),  nullable=False),
-    StructField("height",           IntegerType(), nullable=True),
-    StructField("weight",           IntegerType(), nullable=True),
-    StructField("base_experience",  IntegerType(), nullable=True),
+pokeapi_schema = StructType([
+    StructField("id", IntegerType()),
+    StructField("name", StringType()),
+    StructField("height", IntegerType()),
+    StructField("weight", IntegerType()),
+    StructField("base_experience", IntegerType()),
+    StructField("types", ArrayType(StructType([
+        StructField("type", StructType([
+            StructField("name", StringType())
+        ]))
+    ]))),
+    StructField("stats", ArrayType(StructType([
+        StructField("base_stat", IntegerType()),
+        StructField("stat", StructType([
+            StructField("name", StringType())
+        ]))
+    ]))),
+    StructField("abilities", ArrayType(StructType([
+        StructField("is_hidden", BooleanType()),
+        StructField("ability", StructType([
+            StructField("name", StringType())
+        ]))
+    ])))
 ])
 
-SCHEMA_TYPE = StructType([
-    StructField("pokemon_id",  IntegerType(), nullable=False),
-    StructField("type_name",   StringType(),  nullable=False),
-])
+df_parsed = df_raw.withColumn("data", F.from_json(F.col("payload"), pokeapi_schema)).select("data.*")
 
-SCHEMA_STATS = StructType([
-    StructField("pokemon_id", IntegerType(), nullable=False),
-    StructField("stat_name",  StringType(),  nullable=False),
-    StructField("base_stat",  IntegerType(), nullable=False),
-])
-
-SCHEMA_ABILITY = StructType([
-    StructField("pokemon_id",    IntegerType(), nullable=False),
-    StructField("ability_name",  StringType(),  nullable=False),
-    StructField("is_hidden",     BooleanType(), nullable=False),
-])
+df_parsed = df_parsed.withColumnRenamed("id", "pokemon_id")
 
 # COMMAND ----------
 
-df_pokemon = spark.createDataFrame(
-    [asdict(p) for p in raw_data.pokemon],
-    schema=SCHEMA_POKEMON,
+df_pokemon = df_parsed.select("pokemon_id", "name", "height", "weight", "base_experience")
+
+df_type = (
+    df_parsed
+    .select("pokemon_id", F.explode("types").alias("type_struct"))
+    .select(
+        "pokemon_id", 
+        F.col("type_struct.type.name").alias("type_name")
+    )
 )
 
-df_type = spark.createDataFrame(
-    [asdict(t) for t in raw_data.types],
-    schema=SCHEMA_TYPE,
+df_stats = (
+    df_parsed
+    .select("pokemon_id", F.explode("stats").alias("stat_struct"))
+    .select(
+        "pokemon_id", 
+        F.col("stat_struct.stat.name").alias("stat_name"),
+        F.col("stat_struct.base_stat").alias("base_stat")
+    )
 )
 
-df_stats = spark.createDataFrame(
-    [asdict(s) for s in raw_data.stats],
-    schema=SCHEMA_STATS,
+df_ability = (
+    df_parsed
+    .select("pokemon_id", F.explode("abilities").alias("ability_struct"))
+    .select(
+        "pokemon_id", 
+        F.col("ability_struct.ability.name").alias("ability_name"),
+        F.col("ability_struct.is_hidden").alias("is_hidden")
+    )
 )
-
-df_ability = spark.createDataFrame(
-    [asdict(a) for a in raw_data.abilities],
-    schema=SCHEMA_ABILITY,
-)
-
 
 # COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Data quality checks before persisting
-# ---------------------------------------------------------------------------
 def run_quality_checks(df_pokemon, df_type, df_stats, df_ability) -> None:
     checks = []
 
