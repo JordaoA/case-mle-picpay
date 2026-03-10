@@ -14,10 +14,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
-import json
+import pandas as pd
 import requests
-from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, StructType, StructField, IntegerType
+import json
+from pyspark.sql.functions import col
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,30 +83,30 @@ class PokeAPIExtractor:
         self.retry_backoff = retry_backoff
         self.session = self._build_session()
 
-    def fetch_all_pokemon_spark(self, spark, limit=None):
+    def fetch_all_pokemon(self, spark, limit=None):
         urls = self._fetch_pokemon_url_list(limit=limit)
         
-        df_urls = spark.createDataFrame([(u,) for u in urls], ["url"])
+        df_urls = spark.createDataFrame(pd.DataFrame(urls, columns=["url"]))
         
-        df_urls = df_urls.repartition(self.max_workers)
+        output_schema = "url string, payload string"
 
-        def fetch_details_partition(urls_iter):
+        def fetch_partition_pandas(pdf_iterator):
             session = requests.Session()
-            results = []
-            for row in urls_iter:
-                try:
-                    response = session.get(row.url, timeout=10)
-                    if response.status_code == 200:
-                        results.append(json.dumps(response.json()))
-                except Exception:
-                    continue
-            return results
+            for pdf in pdf_iterator:
+                results = []
+                for url in pdf['url']:
+                    try:
+                        response = session.get(url, timeout=10)
+                        if response.status_code == 200:
+                            results.append((url, json.dumps(response.json())))
+                    except Exception:
+                        continue
+                
+                yield pd.DataFrame(results, columns=["url", "payload"])
 
-        raw_jsons_rdd = df_urls.rdd.mapPartitions(fetch_details_partition)
+        df_results = df_urls.mapInPandas(fetch_partition_pandas, schema=output_schema)
         
-        df_raw = spark.createDataFrame(raw_jsons_rdd.map(lambda x: (x,)), ["payload"])
-        
-        return df_raw
+        return df_results
 
     def _build_session(self) -> requests.Session:
         session = requests.Session()
