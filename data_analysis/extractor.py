@@ -11,11 +11,13 @@ Usage:
 """
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Optional
 
+import json
 import requests
+from pyspark.sql import functions as F
+from pyspark.sql.types import StringType, StructType, StructField, IntegerType
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,54 +83,30 @@ class PokeAPIExtractor:
         self.retry_backoff = retry_backoff
         self.session = self._build_session()
 
-    def fetch_all_pokemon(self, limit: Optional[int] = None) -> ExtractedData:
-        """
-        Main entry point.
-        Fetches the full pokemon list and then each pokemon's detail page
-        concurrently.
-
-        Args:
-            limit: Optional cap on the number of pokémons (useful for testing).
-
-        Returns:
-            ExtractedData with all four normalized tables populated.
-        """
+    def fetch_all_pokemon_spark(self, spark, limit=None):
         urls = self._fetch_pokemon_url_list(limit=limit)
-        logger.info(f"Starting detail fetch for {len(urls)} pokémons "
-                    f"with {self.max_workers} workers...")
+        
+        df_urls = spark.createDataFrame([(u,) for u in urls], ["url"])
+        
+        df_urls = df_urls.repartition(self.max_workers)
 
-        result = ExtractedData()
-        completed = 0
-
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {
-                executor.submit(self._fetch_pokemon_detail, url): url
-                for url in urls
-            }
-            for future in as_completed(futures):
-                url = futures[future]
+        def fetch_details_partition(urls_iter):
+            session = requests.Session()
+            results = []
+            for row in urls_iter:
                 try:
-                    data = future.result()
-                    if data:
-                        result.pokemon.append(data["pokemon"])
-                        result.types.extend(data["types"])
-                        result.stats.extend(data["stats"])
-                        result.abilities.extend(data["abilities"])
-                except Exception as exc:
-                    logger.warning(f"Failed to process {url}: {exc}")
-                finally:
-                    completed += 1
-                    if completed % 100 == 0:
-                        logger.info(f"Progress: {completed}/{len(urls)} pokémons processed")
+                    response = session.get(row.url, timeout=10)
+                    if response.status_code == 200:
+                        results.append(json.dumps(response.json()))
+                except Exception:
+                    continue
+            return results
 
-        logger.info(
-            f"Extraction complete — "
-            f"{len(result.pokemon)} pokémons | "
-            f"{len(result.types)} types | "
-            f"{len(result.stats)} stats | "
-            f"{len(result.abilities)} abilities"
-        )
-        return result
+        raw_jsons_rdd = df_urls.rdd.mapPartitions(fetch_details_partition)
+        
+        df_raw = spark.createDataFrame(raw_jsons_rdd.map(lambda x: (x,)), ["payload"])
+        
+        return df_raw
 
     def _build_session(self) -> requests.Session:
         session = requests.Session()
