@@ -83,7 +83,7 @@ class PokeAPIExtractor:
         self.retry_backoff = retry_backoff
         self.session = self._build_session()
 
-    def fetch_all_pokemon(self, spark, limit=None):
+    def fetch_all_pokemon(self,spark,limit=None):
         urls = self._fetch_pokemon_url_list(limit=limit)
         
         df_urls = spark.createDataFrame(pd.DataFrame(urls, columns=["url"]))
@@ -105,7 +105,7 @@ class PokeAPIExtractor:
                 yield pd.DataFrame(results, columns=["url", "payload"])
 
         df_results = df_urls.mapInPandas(fetch_partition_pandas, schema=output_schema)
-        
+    
         return df_results
 
     def _build_session(self) -> requests.Session:
