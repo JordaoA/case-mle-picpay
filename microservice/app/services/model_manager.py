@@ -72,16 +72,12 @@ class ModelManager:
         else:
             logger.info(f"Downloading model '{model_name}'...")
             self._download(model_name)
-
             self._refresh_sys_path()
             status = "downloaded"
 
         with self._lock:
             self._deleted.discard(model_name)
         self._load_into_cache(model_name)
-
-        from app.services.mlflow_registry import mlflow_registry
-        mlflow_registry.register_model(model_name)
 
         return status
 
@@ -136,26 +132,15 @@ class ModelManager:
             self._loaded.pop(model_name, None)
             self._deleted.add(model_name)
 
-        from app.services.mlflow_registry import mlflow_registry
-        mlflow_registry.delete_registered_model(model_name)
-
-        logger.info(f"Model '{model_name}' evicted from cache and archived in MLflow.")
+        logger.info(f"Model '{model_name}' evicted from cache.")
 
     def list_models(self) -> list[dict]:
         """
         Returns model info from MLflow registry enriched with
         the in-memory load status from the local cache.
         """
-        from app.services.mlflow_registry import mlflow_registry
-        registry_models = mlflow_registry.list_registered_models()
-
         with self._lock:
-            loaded_names = set(self._loaded.keys())
-
-        for m in registry_models:
-            m["loaded"] = m["name"] in loaded_names
-
-        return registry_models
+            return list(self._loaded.keys())
 
     def loaded_model_names(self) -> list[str]:
         with self._lock:

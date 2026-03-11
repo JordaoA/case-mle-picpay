@@ -2,7 +2,7 @@ SHELL        := /bin/bash
 .SHELLFLAGS  := -euo pipefail -c
 
 ROOT_DIR  := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
-TESTS_DIR := $(ROOT_DIR)/../tests
+TESTS_DIR := $(ROOT_DIR)/tests
 REQ_APP   := $(ROOT_DIR)/requirements.txt
 REQ_TEST  := $(TESTS_DIR)/requirements-test.txt
 
