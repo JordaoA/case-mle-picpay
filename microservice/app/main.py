@@ -7,13 +7,14 @@ Configures logging, registers routers, and exposes the health check endpoint.
 import logging
 import logging.config
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 
+from app.services import get_model_manager
+from app.storage import get_history 
 from app.routers import models, predictions
 from app.schemas.requests import HealthResponse
-from app.services.model_manager import model_manager
-from app.storage.history import PredictionHistory, prediction_history
+from app.storage.history import PredictionHistory
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -63,20 +64,21 @@ app.include_router(predictions.router)
     "/health/",
     response_model=HealthResponse,
     tags=["Health"],
-    summary="Service health check",
 )
-def health() -> HealthResponse:
-    """Returns service status, loaded models, and total predictions count."""
-    is_redis = not isinstance(prediction_history, PredictionHistory)
-    redis_ok = prediction_history.ping() if hasattr(prediction_history, "ping") else True
+def health(
+    history=Depends(get_history),
+    manager=Depends(get_model_manager),
+) -> dict:
+    is_mongo = not isinstance(history, PredictionHistory)
+    mongo_ok = history.ping() if hasattr(history, "ping") else True
 
-    return HealthResponse(
-        status="ok",
-        loaded_models=model_manager.loaded_model_names(),
-        total_predictions=prediction_history.count(),
-        history_backend="redis" if is_redis else "in-memory",
-        redis_connected=redis_ok,
-    )
+    return {
+        "status": "ok",
+        "loaded_models": manager.list_models(),
+        "total_predictions": history.count(),
+        "history_backend": "mongodb" if is_mongo else "in-memory",
+        "mongodb_connected": mongo_ok,
+    }
 
 
 @app.exception_handler(Exception)
@@ -91,9 +93,11 @@ async def global_exception_handler(request, exc: Exception) -> JSONResponse:
 @app.on_event("startup")
 async def startup_event() -> None:
     logger.info("NER Inference Service starting up...")
-    available = model_manager.list_models()
+    manager = get_model_manager()
+    available = manager.list_models()
+    
     if available:
-        logger.info(f"Pre-registered models: {[m['name'] for m in available]}")
+        logger.info(f"Pre-loaded models: {available}")
     else:
         logger.info("No pre-installed models found. Use POST /load/ to register one.")
 

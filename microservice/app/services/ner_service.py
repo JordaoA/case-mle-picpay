@@ -10,15 +10,14 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from app.schemas.requests import EntityResult, PredictResponse
-from app.services.model_manager import model_manager
-from app.services.mlflow_registry import mlflow_registry
-from app.storage.history import prediction_history
+from app.schemas.requests import EntityResult
+from app.services.model_manager import ModelManager
+
 
 logger = logging.getLogger("ner_service.inference")
 
 
-def run_prediction(text: str, model_name: str) -> PredictResponse:
+def run_prediction(text: str, model_name: str, model_manager: ModelManager, model_registry, history_repo) -> dict:
     """
     Loads the requested spaCy model, runs NER on the input text,
     logs the prediction to MLflow, persists to history, and returns
@@ -38,9 +37,12 @@ def run_prediction(text: str, model_name: str) -> PredictResponse:
     if not text:
         raise ValueError("Input text must not be empty.")
 
-    nlp = model_manager.get(model_name)
+    try:
+        nlp = model_manager.get(model_name)
+    except ValueError as exc:
+        raise ValueError(f"Model error: {exc}")
 
-    model_info = mlflow_registry.get_model_info(model_name)
+    model_info = model_registry.get_model_info(model_name)
     model_version = model_info["version"] if model_info else "unknown"
 
     logger.info(
@@ -62,9 +64,7 @@ def run_prediction(text: str, model_name: str) -> PredictResponse:
         for ent in doc.ents
     ]
 
-    timestamp = datetime.now(tz=timezone.utc)
-
-    mlflow_registry.log_prediction(
+    model_registry.log_prediction(
         model_name=model_name,
         model_version=model_version,
         input_text=text,
@@ -72,11 +72,11 @@ def run_prediction(text: str, model_name: str) -> PredictResponse:
         latency_ms=latency_ms,
     )
 
-    prediction_history.add(
+    record = history_repo.add(
         input_text=text,
         output=entities,
         model=model_name,
-        timestamp=timestamp,
+        timestamp=datetime.now(timezone.utc)
     )
 
     logger.info(
@@ -85,10 +85,4 @@ def run_prediction(text: str, model_name: str) -> PredictResponse:
         f"[{', '.join(e.label for e in entities)}]"
     )
 
-    return PredictResponse(
-        model=model_name,
-        model_version=model_version,
-        text=text,
-        entities=entities,
-        timestamp=timestamp,
-    )
+    return {"entities": entities, "record_id": str(record.id)}

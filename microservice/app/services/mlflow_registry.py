@@ -272,27 +272,3 @@ class MLflowRegistry:
             version=new_version,
             stage=STAGE_PRODUCTION,
         )
-
-
-_registry_instance: "MLflowRegistry | None" = None
-
-
-def _get_registry() -> "MLflowRegistry":
-    global _registry_instance
-    if _registry_instance is None:
-        _registry_instance = MLflowRegistry()
-    return _registry_instance
-
-
-class _LazyRegistry:
-    """
-    Transparent proxy for MLflowRegistry.
-    Forwards every attribute access to the real instance, creating it on
-    first use. This lets the rest of the codebase use `mlflow_registry.x`
-    exactly as before without any changes to call sites.
-    """
-    def __getattr__(self, name: str):
-        return getattr(_get_registry(), name)
-
-
-mlflow_registry = _LazyRegistry()

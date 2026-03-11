@@ -247,5 +247,3 @@ class ModelManager:
                     logger.info(f"Pre-loaded model from disk: '{name}'")
                 except Exception as exc:
                     logger.warning(f"Could not pre-load '{name}': {exc}")
-
-model_manager = ModelManager()
