@@ -11,11 +11,13 @@ Usage:
 """
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Optional
 
+import pandas as pd
 import requests
+import json
+from pyspark.sql.functions import col
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,54 +83,55 @@ class PokeAPIExtractor:
         self.retry_backoff = retry_backoff
         self.session = self._build_session()
 
-    def fetch_all_pokemon(self, limit: Optional[int] = None) -> ExtractedData:
-        """
-        Main entry point.
-        Fetches the full pokemon list and then each pokemon's detail page
-        concurrently.
-
+    def fetch_all_pokemon(self,spark,limit=None):
+        """ Fetches Pokémon data from the PokeAPI using distributed Spark processing.
+    
+        This method leverages the Spark DataFrame API and `mapInPandas` to perform
+        concurrent HTTP requests across cluster workers. It is highly optimized for
+        serverless environments where RDD access is restricted, using Apache Arrow
+        for efficient data transfer between the JVM and Python runtimes.
+    
         Args:
-            limit: Optional cap on the number of pokémons (useful for testing).
-
+            spark (SparkSession): The active Spark session used to create and
+                manage the distributed DataFrames.
+            limit (Optional[int], optional): The maximum number of Pokémon to
+                fetch. If None, it fetches all available Pokémon from the API.
+                Defaults to None.
+    
         Returns:
-            ExtractedData with all four normalized tables populated.
+            DataFrame: A PySpark DataFrame containing two columns:
+                - url (StringType): The PokeAPI endpoint for the specific Pokémon.
+                - payload (StringType): The raw JSON response as a string, ready
+                  to be parsed by Spark SQL functions.
+    
+        Raises:
+            requests.RequestException: If the initial API pagination request to
+                gather the URL list fails (handled by the driver).
         """
         urls = self._fetch_pokemon_url_list(limit=limit)
-        logger.info(f"Starting detail fetch for {len(urls)} pokémons "
-                    f"with {self.max_workers} workers...")
+        
+        df_urls = spark.createDataFrame(pd.DataFrame(urls, columns=["url"]))
+        
+        output_schema = "url string, payload string"
 
-        result = ExtractedData()
-        completed = 0
+        def fetch_partition_pandas(pdf_iterator):
+            """ Processes a partition of URLs using a single HTTP session."""
+            session = requests.Session()
+            for pdf in pdf_iterator:
+                results = []
+                for url in pdf['url']:
+                    try:
+                        response = session.get(url, timeout=10)
+                        if response.status_code == 200:
+                            results.append((url, json.dumps(response.json())))
+                    except Exception:
+                        continue
+                
+                yield pd.DataFrame(results, columns=["url", "payload"])
 
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {
-                executor.submit(self._fetch_pokemon_detail, url): url
-                for url in urls
-            }
-            for future in as_completed(futures):
-                url = futures[future]
-                try:
-                    data = future.result()
-                    if data:
-                        result.pokemon.append(data["pokemon"])
-                        result.types.extend(data["types"])
-                        result.stats.extend(data["stats"])
-                        result.abilities.extend(data["abilities"])
-                except Exception as exc:
-                    logger.warning(f"Failed to process {url}: {exc}")
-                finally:
-                    completed += 1
-                    if completed % 100 == 0:
-                        logger.info(f"Progress: {completed}/{len(urls)} pokémons processed")
-
-        logger.info(
-            f"Extraction complete — "
-            f"{len(result.pokemon)} pokémons | "
-            f"{len(result.types)} types | "
-            f"{len(result.stats)} stats | "
-            f"{len(result.abilities)} abilities"
-        )
-        return result
+        df_results = df_urls.mapInPandas(fetch_partition_pandas, schema=output_schema)
+    
+        return df_results
 
     def _build_session(self) -> requests.Session:
         session = requests.Session()
