@@ -7,12 +7,12 @@ The rest of the application always imports from here:
 
     from app.storage.history import prediction_history
 
-Swapping backends (e.g. Redis → Postgres) requires changing only this file.
+Swapping backends requires changing only this file.
 
 Strategy:
-    - Try to connect to Redis on startup
-    - If Redis is reachable → use RedisHistory
-    - If Redis is unavailable → fall back to in-memory PredictionHistory
+    - Try to connect to MongoDB on startup
+    - If Mongo is reachable → use MongoHistory
+    - If Mongo is unavailable → fall back to in-memory PredictionHistory
       and log a clear warning (so it's obvious in production logs)
 """
 
@@ -27,7 +27,7 @@ logger = logging.getLogger("ner_service.history_factory")
 
 
 class PredictionHistory:
-    """Thread-safe in-memory prediction log. Used as fallback if Redis is down."""
+    """Thread-safe in-memory prediction log. Used as fallback if Mongo is down."""
 
     def __init__(self) -> None:
         self._records: list[PredictionRecord] = []
@@ -44,7 +44,7 @@ class PredictionHistory:
         with self._lock:
             self._counter += 1
             record = PredictionRecord(
-                id=self._counter,
+                id=str(self._counter),
                 input_text=input_text,
                 output=output,
                 model=model,
@@ -62,30 +62,26 @@ class PredictionHistory:
             return self._counter
 
     def ping(self) -> bool:
-        return True  # always healthy
+        return True
 
 
-def _build_history() -> Union["RedisHistory", PredictionHistory]:  # noqa: F821
+def _build_history() -> Union["MongoHistory", PredictionHistory]:
     """
-    Attempts to initialise RedisHistory.
-    Falls back to PredictionHistory if Redis is unreachable.
+    Attempts to initialise MongoHistory.
+    Falls back to PredictionHistory if Mongo is unreachable.
     """
     try:
-        from app.storage.redis_history import RedisHistory
+        from app.storage.mongo_history import MongoHistory
 
-        instance = RedisHistory()
+        instance = MongoHistory()
         if instance.ping():
-            logger.info("Using Redis-backed prediction history.")
+            logger.info("Using MongoDB-backed prediction history.")
             return instance
         else:
-            raise ConnectionError("Redis ping failed.")
+            raise ConnectionError("MongoDB ping failed.")
     except Exception as exc:
         logger.warning(
-            f"Redis unavailable ({exc}). "
+            f"MongoDB unavailable ({exc}). "
             f"Falling back to in-memory history — data will NOT persist across restarts."
         )
         return PredictionHistory()
-
-
-# Singleton — resolved once at import time
-prediction_history = _build_history()

@@ -55,7 +55,7 @@ class EntityResult(BaseModel):
 
 
 class PredictionRecord(BaseModel):
-    id: int
+    id: str
     input_text: str
     output: list[EntityResult]
     model: str
@@ -68,11 +68,8 @@ class ListPredictionsResponse(BaseModel):
 
 
 class PredictResponse(BaseModel):
-    model: str
-    model_version: str = "unknown"
-    text: str
     entities: list[EntityResult]
-    timestamp: datetime
+    record_id: str
 
 
 class PredictRequest(BaseModel):
@@ -93,7 +90,7 @@ class HealthResponse(BaseModel):
     loaded_models: list[str]
     total_predictions: int
     history_backend: str
-    redis_connected: bool 
+    mongodb_connected: bool 
     
 
 class ErrorResponse(BaseModel):

@@ -44,26 +44,13 @@ class Settings(BaseSettings):
         default=os.getenv("SERVICE_VERSION", "1.0.0"),
         alias="SERVICE_VERSION",
     )
-
-    redis_host: str = Field(
-        default=os.getenv("REDIS_HOST", "redis"),
-        alias="REDIS_HOST",
+    mongo_uri: str = Field(
+        default=os.getenv("MONGO_URI", "mongodb://mongo:27017"),
+        alias="MONGO_URI",
     )
-    redis_port: int = Field(
-        default=int(os.getenv("REDIS_PORT", "6379")),
-        alias="REDIS_PORT",
-    )
-    redis_db: int = Field(
-        default=int(os.getenv("REDIS_DB", "0")),
-        alias="REDIS_DB",
-    )
-    redis_password: str = Field(
-        default=os.getenv("REDIS_PASSWORD", ""),
-        alias="REDIS_PASSWORD",
-    )
-    redis_ttl_seconds: int = Field(
-        default=int(os.getenv("REDIS_TTL_SECONDS", str(60 * 60 * 24 * 7))),
-        alias="REDIS_TTL_SECONDS",
+    mongo_db_name: str = Field(
+        default=os.getenv("MONGO_DB_NAME", "picpay_ner"),
+        alias="MONGO_DB_NAME",
     )
 
     @property
