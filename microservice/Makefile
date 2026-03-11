@@ -17,12 +17,14 @@ help:
 	@printf "\n"
 	@printf "  \033[1mNER Inference Service\033[0m\n"
 	@printf "\n"
-	@printf "  \033[36mmake install\033[0m   Install all dependencies on the host\n"
-	@printf "  \033[36mmake up\033[0m        Build and start the full stack in Docker\n"
-	@printf "  \033[36mmake down\033[0m      Stop containers, keep volumes\n"
-	@printf "  \033[36mmake clean\033[0m     Stop containers AND delete all volumes\n"
-	@printf "  \033[36mmake logs\033[0m      Tail container logs (Ctrl+C to stop)\n"
-	@printf "  \033[36mmake test\033[0m      Run the unit test suite (host)\n"
+	@printf "  \033[36mmake install\033[0m     Install all dependencies on the host\n"
+	@printf "  \033[36mmake up\033[0m          Build and start the full stack in Docker\n"
+	@printf "  \033[36mmake down\033[0m        Stop containers, keep volumes\n"
+	@printf "  \033[36mmake clean\033[0m       Stop containers AND delete all volumes\n"
+	@printf "  \033[36mmake logs\033[0m        Tail container logs (Ctrl+C to stop)\n"
+	@printf "  \033[36mmake test\033[0m        Run all tests (unit & integration)\n"
+	@printf "  \033[36mmake test-unit\033[0m   Run only unit tests\n"
+	@printf "  \033[36mmake test-int\033[0m    Run only integration tests\n"
 	@printf "\n"
 
 .PHONY: install
@@ -39,7 +41,7 @@ up: _ensure-env
 	@printf "\n\033[1m── Building and starting full stack ──\033[0m\n"
 	$(COMPOSE) up --build -d
 	@printf "\n\033[1m── Waiting for services to be healthy ──\033[0m\n"
-	@$(MAKE) _wait-healthy SVC=picpay-redis
+	@$(MAKE) _wait-healthy SVC=picpay-mongo
 	@$(MAKE) _wait-healthy SVC=picpay-mlflow
 	@$(MAKE) _wait-healthy SVC=picpay-ner-service
 	@printf "\n\033[32m✔ Stack is up and healthy.\033[0m\n\n"
@@ -58,7 +60,7 @@ down:
 .PHONY: clean
 clean:
 	@printf "\033[1m── Stopping containers and deleting volumes ──\033[0m\n"
-	@printf "   WARNING: This will delete all MLflow and Redis data.\n"
+	@printf "   WARNING: This will delete all MLflow and MongoDB data.\n"
 	-$(COMPOSE) down -v
 	@printf "\033[32m✔ Containers and volumes removed.\033[0m\n"
 
@@ -67,17 +69,31 @@ logs:
 	@printf "\033[1m── Container logs (Ctrl+C to stop) ──\033[0m\n"
 	$(COMPOSE) logs -f
 
-.PHONY: test
-test: _ensure-install
+.PHONY: test-unit
+test-unit: _ensure-install
 	@printf "\n\033[1m── Running unit tests ──\033[0m\n\n"
 	cd $(ROOT_DIR) && \
 	PYTHONPATH=$(ROOT_DIR) \
 	pytest $(TESTS_DIR)/unit/ \
-	    -m unit \
 	    --tb=short \
 	    -q \
 	    $(ARGS)
-	@printf "\n\033[32m✔ All tests passed.\033[0m\n\n"
+	@printf "\n\033[32m✔ Unit tests passed.\033[0m\n\n"
+
+.PHONY: test-int
+test-int: _ensure-install
+	@printf "\n\033[1m── Running integration tests ──\033[0m\n\n"
+	cd $(ROOT_DIR) && \
+	PYTHONPATH=$(ROOT_DIR) \
+	pytest $(TESTS_DIR)/integration/ \
+	    --tb=short \
+	    -q \
+	    $(ARGS)
+	@printf "\n\033[32m✔ Integration tests passed.\033[0m\n\n"
+
+.PHONY: test
+test: test-unit test-int
+	@printf "\n\033[32m✔ All test suites passed.\033[0m\n\n"
 
 .PHONY: _ensure-env
 _ensure-env:
@@ -89,7 +105,7 @@ _ensure-env:
 
 .PHONY: _ensure-install
 _ensure-install:
-	@python3 -c "import fastapi, uvicorn, spacy, mlflow, redis" 2>/dev/null || \
+	@python3 -c "import fastapi, uvicorn, spacy, mlflow, pymongo" 2>/dev/null || \
 	    { printf "\033[1mDependencies missing — running make install first.\033[0m\n"; \
 	      $(MAKE) -C $(ROOT_DIR) install; }
 
