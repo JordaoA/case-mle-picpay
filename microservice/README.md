@@ -26,19 +26,21 @@ make up
 
 That's it. This single command will:
 
-1. Copy `.env.example` → `.env` if no `.env` file exists yet
-2. Build the NER service Docker image (multi-stage, ~300 MB — takes ~3–5 min on first run)
-3. Pull `redis:7.2-alpine` and the MLflow image
-4. Start all three containers in the correct order, waiting for each health check to pass
-5. Print the service URLs when everything is ready
+1. Build the NER service Docker image (multi-stage, ~300 MB — takes ~3–5 min on first run)
+2. Pull `mongo:6.0` and the MLflow image
+3. Start all three containers in the correct order, waiting for each health check to pass
+4. Print the service URLs when everything is ready
 
 Expected output when healthy:
 
 ```
 ── Building and starting full stack ──
 ── Waiting for services to be healthy ──
-   ✔ picpay-redis is healthy.
+   Waiting for picpay-mongo …
+   ✔ picpay-mongo is healthy.
+   Waiting for picpay-mlflow …
    ✔ picpay-mlflow is healthy.
+   Waiting for picpay-ner-service …
    ✔ picpay-ner-service is healthy.
 
 ✔ Stack is up and healthy.
@@ -69,25 +71,27 @@ Expected output when healthy:
 
 ## Configuring the environment
 
-On first run, `make up` automatically copies `.env.example` to `.env`. You can edit `.env` to override any default:
+You can create a `.env` file to override defaults. Simply set any of the variables listed below:
 
 ```bash
-cp .env.example .env
-# Edit .env before running make up
+cp .env.example .env  # If .env.example exists
+# Or create .env manually with variables below
 ```
 
-Key variables:
+Key variables (optional — defaults shown):
 
 | Variable | Default | Description |
 |---|---|---|
 | `MLFLOW_HOST` | `mlflow` | MLflow hostname |
 | `MLFLOW_PORT` | `5000` | MLflow port |
-| `REDIS_HOST` | `redis` | Redis hostname |
-| `REDIS_PORT` | `6379` | Redis port |
-| `REDIS_TTL_SECONDS` | `604800` | Prediction history TTL in seconds (0 = no expiry) |
-| `SERVICE_NAME` | `picpay-ner-service` | Identifier used in MLflow tags |
+| `MLFLOW_EXPERIMENT_NAME` | `ner-inference-service` | MLflow experiment name |
+| `MONGO_URI` | `mongodb://mongo:27017` | MongoDB connection URI |
+| `MONGO_DB_NAME` | `picpay_ner` | MongoDB database name |
+| `SERVICE_NAME` | `picpay-ner-service` | Service identifier used in MLflow tags |
+| `SERVICE_VERSION` | `1.0.0` | Service version |
+| `SERVICE_PORT` | `8000` | Services HTTP port |
 
-> Do not use quotes around values and do not add inline comments in `.env`. See `.env.example` for the correct format.
+> Do not use quotes around values and do not add inline comments in `.env`.
 
 ---
 
