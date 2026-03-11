@@ -84,6 +84,30 @@ class PokeAPIExtractor:
         self.session = self._build_session()
 
     def fetch_all_pokemon(self,spark,limit=None):
+        """ Fetches Pokémon data from the PokeAPI using distributed Spark processing.
+    
+        This method leverages the Spark DataFrame API and `mapInPandas` to perform
+        concurrent HTTP requests across cluster workers. It is highly optimized for
+        serverless environments where RDD access is restricted, using Apache Arrow
+        for efficient data transfer between the JVM and Python runtimes.
+    
+        Args:
+            spark (SparkSession): The active Spark session used to create and
+                manage the distributed DataFrames.
+            limit (Optional[int], optional): The maximum number of Pokémon to
+                fetch. If None, it fetches all available Pokémon from the API.
+                Defaults to None.
+    
+        Returns:
+            DataFrame: A PySpark DataFrame containing two columns:
+                - url (StringType): The PokeAPI endpoint for the specific Pokémon.
+                - payload (StringType): The raw JSON response as a string, ready
+                  to be parsed by Spark SQL functions.
+    
+        Raises:
+            requests.RequestException: If the initial API pagination request to
+                gather the URL list fails (handled by the driver).
+        """
         urls = self._fetch_pokemon_url_list(limit=limit)
         
         df_urls = spark.createDataFrame(pd.DataFrame(urls, columns=["url"]))
@@ -91,6 +115,7 @@ class PokeAPIExtractor:
         output_schema = "url string, payload string"
 
         def fetch_partition_pandas(pdf_iterator):
+            """ Processes a partition of URLs using a single HTTP session."""
             session = requests.Session()
             for pdf in pdf_iterator:
                 results = []
