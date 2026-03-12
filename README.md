@@ -13,7 +13,7 @@ The goal of this part is to demonstrate skills in REST API ingestion, relational
 Data is consumed from the public [PokeAPI](https://pokeapi.co/docs/v2#pokemon-section), which provides detailed information about pokémons. From each pokémon's detail page, three specific datasets are extracted — types, stats, and abilities — and modeled into four relational tables:
 
 | Table | Description |
-|---|---|
+| --- | --- |
 | `pokemon` | Core attributes: id, name, height, weight, base experience |
 | `pokemon_type` | One row per type per pokémon (e.g. fire, water) |
 | `pokemon_stats` | One row per stat per pokémon (hp, attack, defense, etc.) |
@@ -21,14 +21,13 @@ Data is consumed from the public [PokeAPI](https://pokeapi.co/docs/v2#pokemon-se
 
 With those tables in place, three analytical questions are answered using Spark:
 
-- **Q1 —** How many pokémons have more than one type and a total strength above the overall average?
-- **Q2 —** Which abilities appear exclusively in multi-type pokémons (i.e. never in a single-type one)?
-- **Q3 —** What are the top 5 most versatile pokémons, scored by `(num_types × 2) + num_abilities + (sum_stats ÷ 100)`?
+* **Q1 —** How many pokémons have more than one type and a total strength above the overall average?
+* **Q2 —** Which abilities appear exclusively in multi-type pokémons (i.e. never in a single-type one)?
+* **Q3 —** What are the top 5 most versatile pokémons, scored by `(num_types × 2) + num_abilities + (sum_stats ÷ 100)`?
 
 Each question is accompanied by a Seaborn visualization in the notebook.
 
-→ **[How to run — Data Analysis guide](data_analysis/README.md)**
-
+→ **[How to run — Data Analysis guide](https://www.google.com/search?q=data_analysis/README.md)**
 
 ---
 
@@ -43,23 +42,23 @@ The service accepts free-form English text, runs NER inference using a loaded sp
 ### Stack
 
 | Component | Role |
-|---|---|
+| --- | --- |
 | **FastAPI** | REST API framework |
 | **spaCy** | NER inference engine |
 | **MLflow** | Model registry + experiment tracking |
-| **MongoDB** | Persistent prediction history|
+| **MongoDB** | Persistent prediction history |
 | **Docker Compose** | Orchestrates all three services |
 
 ### API Endpoints
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/load/` | Download a spaCy model and register it in MLflow |
 | `POST` | `/predict/` | Run NER inference on text, log result to MLflow + MongoDB |
 | `GET` | `/models/` | List all registered models with registry metadata |
 | `DELETE` | `/models/{name}` | Archive a model in MLflow and evict it from cache |
 | `GET` | `/list/` | Retrieve full prediction history |
-| `GET` | `/health/` | Service health, loaded models, Redis status |
+| `GET` | `/health/` | Service health, loaded models, and MongoDB status |
 
 ### Example flow
 
@@ -79,15 +78,17 @@ curl -X POST http://localhost:8000/predict/ \
 
 # 4. Browse results in MLflow
 open http://localhost:5000
+
 ```
 
 ### Design highlights
 
-- **Lazy model cache** — spaCy models are loaded into memory on first use and kept in a thread-safe in-process cache. No reload on repeat predictions.
-- **MLflow integration** — every `/load/` call registers a model version and promotes it to Production; every `/predict/` call logs a run with latency, entity count, and label distribution.
-- **Fully containerized** — a single `make up` builds and starts all three services with health-checked startup ordering.
+* **Lazy model cache** — spaCy models are loaded into memory on first use and kept in a thread-safe in-process cache.
+* **MLflow integration** — every `/load/` call registers a model version; every `/predict/` call logs a run with metadata like entity counts and label distributions.
+* **Persistence** — uses MongoDB to store a durable history of all predictions made through the service.
+* **Fully containerized** — a single `make up` builds and starts all three services (API, MLflow, MongoDB) with health-checked startup ordering.
 
-→ **[How to run — Microservice guide](microservice/README.md)**
+→ **[How to run — Microservice guide](https://www.google.com/search?q=microservice/README.md)**
 
 ---
 
@@ -103,8 +104,9 @@ case-mle-picpay/
 └── microservice/
     ├── README.md                # Run guide for Part 2
     ├── app/                     # FastAPI application
-    ├── Dockerfile
-    ├── docker-compose.yaml
-    ├── Makefile
+    ├── Dockerfile               # Microservice container definition
+    ├── docker-compose.yaml      # Multi-container orchestration
+    ├── Makefile                 # Command automation
     └── ...
+
 ```
