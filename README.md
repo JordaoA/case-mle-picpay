@@ -27,7 +27,7 @@ With those tables in place, three analytical questions are answered using Spark:
 
 Each question is accompanied by a Seaborn visualization in the notebook.
 
-→ **[How to run — Data Analysis guide](https://www.google.com/search?q=data_analysis/README.md)**
+→ **[How to run — Data Analysis guide](data_analysis/README.md)**
 
 ---
 
@@ -88,7 +88,7 @@ open http://localhost:5000
 * **Persistence** — uses MongoDB to store a durable history of all predictions made through the service.
 * **Fully containerized** — a single `make up` builds and starts all three services (API, MLflow, MongoDB) with health-checked startup ordering.
 
-→ **[How to run — Microservice guide](https://www.google.com/search?q=microservice/README.md)**
+→ **[How to run — Microservice guide](microservice/README.md)**
 
 ---
 
