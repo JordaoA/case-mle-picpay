@@ -37,7 +37,7 @@ install:
 	@printf "\n\033[32m✔ All dependencies installed.\033[0m\n\n"
 
 .PHONY: up
-up: _ensure-env
+up:
 	@printf "\n\033[1m── Building and starting full stack ──\033[0m\n"
 	$(COMPOSE) up --build -d
 	@printf "\n\033[1m── Waiting for services to be healthy ──\033[0m\n"
@@ -70,7 +70,7 @@ logs:
 	$(COMPOSE) logs -f
 
 .PHONY: test-unit
-test-unit: _ensure-install
+test-unit:
 	@printf "\n\033[1m── Running unit tests ──\033[0m\n\n"
 	cd $(ROOT_DIR) && \
 	PYTHONPATH=$(ROOT_DIR) \
@@ -81,7 +81,7 @@ test-unit: _ensure-install
 	@printf "\n\033[32m✔ Unit tests passed.\033[0m\n\n"
 
 .PHONY: test-int
-test-int: _ensure-install
+test-int:
 	@printf "\n\033[1m── Running integration tests ──\033[0m\n\n"
 	cd $(ROOT_DIR) && \
 	PYTHONPATH=$(ROOT_DIR) \
@@ -94,20 +94,6 @@ test-int: _ensure-install
 .PHONY: test
 test: test-unit test-int
 	@printf "\n\033[32m✔ All test suites passed.\033[0m\n\n"
-
-.PHONY: _ensure-env
-_ensure-env:
-	@if [ ! -f $(ROOT_DIR)/.env ]; then \
-	    printf "\033[1m── No .env found — copying from .env.example ──\033[0m\n"; \
-	    cp $(ROOT_DIR)/.env.example $(ROOT_DIR)/.env; \
-	    printf "   Edit .env to customise settings.\n\n"; \
-	fi
-
-.PHONY: _ensure-install
-_ensure-install:
-	@python3 -c "import fastapi, uvicorn, spacy, mlflow, pymongo" 2>/dev/null || \
-	    { printf "\033[1mDependencies missing — running make install first.\033[0m\n"; \
-	      $(MAKE) -C $(ROOT_DIR) install; }
 
 .PHONY: _wait-healthy
 _wait-healthy:
