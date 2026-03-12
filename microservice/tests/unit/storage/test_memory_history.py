@@ -41,12 +41,12 @@ class TestAdd:
     def test_first_id_is_one(self):
         h = PredictionHistory()
         r = h.add("text", _money(), "en_core_web_sm", _ts())
-        assert r.id == 1
+        assert r.id == '1'
 
     def test_ids_are_sequential(self):
         h = PredictionHistory()
         ids = [h.add(f"t{i}", [], "en_core_web_sm", _ts()).id for i in range(5)]
-        assert ids == [1, 2, 3, 4, 5]
+        assert ids == ['1', '2', '3', '4', '5']
 
     def test_record_stores_all_fields(self):
         h = PredictionHistory()

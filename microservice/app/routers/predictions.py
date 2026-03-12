@@ -10,19 +10,23 @@ Routes:
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import Depends, APIRouter, HTTPException, status
 
 from app.schemas.requests import (
     ListPredictionsResponse,
     PredictRequest,
     PredictResponse,
 )
+from app.services.model_manager import ModelManager
+from app.services.mlflow_registry import MLflowRegistry
+from app.storage.mongo_history import MongoHistory
+
 from app.services.ner_service import run_prediction
-from app.storage.history import prediction_history
+from app.services import get_model_manager, get_mlflow_registry
+from app.storage import get_history
 
 logger = logging.getLogger("ner_service.router.predictions")
 router = APIRouter(tags=["Predictions"])
-
 
 @router.post(
     "/predict/",
@@ -30,7 +34,12 @@ router = APIRouter(tags=["Predictions"])
     status_code=status.HTTP_200_OK,
     summary="Run NER inference on a text",
 )
-def predict(payload: PredictRequest) -> PredictResponse:
+def predict(
+        payload: PredictRequest,
+        history: MongoHistory =Depends(get_history),
+        manager: ModelManager = Depends(get_model_manager),
+        registry: MLflowRegistry = Depends(get_mlflow_registry)
+    ) -> PredictResponse:
     """
     Loads the requested spaCy model (from cache if available) and runs
     Named Entity Recognition on the provided text.
@@ -49,7 +58,13 @@ def predict(payload: PredictRequest) -> PredictResponse:
     )
 
     try:
-        response = run_prediction(text=payload.text, model_name=payload.model)
+        response = run_prediction(
+            text=payload.text, 
+            model_name=payload.model,
+            model_manager=manager,
+            model_registry=registry,
+            history_repo=history
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -70,12 +85,14 @@ def predict(payload: PredictRequest) -> PredictResponse:
     response_model=ListPredictionsResponse,
     summary="List all predictions made so far",
 )
-def list_predictions() -> ListPredictionsResponse:
+def list_predictions(
+        history=Depends(get_history)
+    ) -> ListPredictionsResponse:
     """
     Returns the full history of predictions made since the service started.
     Each record includes the input text, extracted entities, model used, and timestamp.
     """
-    records = prediction_history.all()
+    records = history.all()
     return ListPredictionsResponse(
         total=len(records),
         predictions=records,

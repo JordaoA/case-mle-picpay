@@ -1,18 +1,14 @@
 services:
 
-  redis:
-    image: redis:7.2-alpine
-    container_name: picpay-redis
+  mongo:
+    image: mongo:6.0
+    container_name: picpay-mongo
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "27017:27017"
     volumes:
-      - redis_data:/data
-    command: >
-      redis-server
-        --appendonly yes
-        --appendfsync everysec
+      - mongo_data:/data/db
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
       interval: 10s
       timeout: 5s
       retries: 5
@@ -46,33 +42,28 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runtime           # uses the lean production stage
+      target: runtime
     container_name: picpay-ner-service
     ports:
       - "${SERVICE_PORT:-8000}:8000"
     environment:
       PYTHONUNBUFFERED: "1"
-      # MLflow
       MLFLOW_HOST: ${MLFLOW_HOST:-mlflow}
       MLFLOW_PORT: ${MLFLOW_PORT:-5000}
       MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-ner-inference-service}
-      # Redis
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_DB: ${REDIS_DB:-0}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      # Service metadata
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-picpay_ner}
       SERVICE_NAME: ${SERVICE_NAME:-picpay-ner-service}
       SERVICE_VERSION: ${SERVICE_VERSION:-1.0.0}
     depends_on:
-      redis:
+      mongo:
         condition: service_healthy
       mlflow:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  redis_data:
+  mongo_data:
     driver: local
   mlflow_data:
     driver: local

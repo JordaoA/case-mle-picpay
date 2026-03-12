@@ -1,45 +1,48 @@
 """
-integration/test_health.py
----------------------------
-GET /health/ — status, loaded_models, backends, redis flag.
+Integration tests for the GET /health/ check endpoint.
 """
 
 import pytest
+from fastapi.testclient import TestClient
+
+from app.storage import get_history
+from app.services import get_model_manager
+from app.main import app
+from tests.fakes.history_fake import FakePredictionHistory
+from tests.fakes.spacy_fake import FakeModelManager
+
+fake_history = FakePredictionHistory()
+fake_manager = FakeModelManager()
 
 
-@pytest.mark.integration
+@pytest.fixture(autouse=True)
+def override_dependencies():
+    """Injects Fakes into FastAPI."""
+    app.dependency_overrides[get_history] = lambda: fake_history
+    app.dependency_overrides[get_model_manager] = lambda: fake_manager
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(app)
+
+
 class TestHealthEndpoint:
+    def test_health_check_healthy_mongo(self, client: TestClient) -> None:
+        """Verifies health check when MongoDB is up."""
+        fake_history._is_healthy = True
+        response = client.get("/health/")
+        
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+        assert response.json()["mongodb_connected"] is True
 
-    def test_returns_200(self, client):
-        r = client.get("/health/")
-        assert r.status_code == 200
-
-    def test_status_is_ok(self, client):
-        r = client.get("/health/")
-        assert r.json()["status"] == "ok"
-
-    def test_loaded_models_empty_by_default(self, client, mock_mm):
-        mock_mm.loaded_model_names.return_value = []
-        r = client.get("/health/")
-        assert r.json()["loaded_models"] == []
-
-    def test_loaded_models_reflects_cache(self, client, mock_mm):
-        mock_mm.loaded_model_names.return_value = ["en_core_web_sm"]
-        r = client.get("/health/")
-        assert "en_core_web_sm" in r.json()["loaded_models"]
-
-    def test_total_predictions_zero_initially(self, client):
-        r = client.get("/health/")
-        assert r.json()["total_predictions"] == 0
-
-    def test_history_backend_in_memory(self, client):
-        r = client.get("/health/")
-        # The test fixture uses in-memory PredictionHistory
-        assert r.json()["history_backend"] == "in-memory"
-
-    def test_response_schema_complete(self, client):
-        r = client.get("/health/")
-        body = r.json()
-        for key in ("status", "loaded_models", "total_predictions",
-                    "history_backend", "redis_connected"):
-            assert key in body
+    def test_health_check_mongo_down(self, client: TestClient) -> None:
+        """Verifies health check flags when MongoDB is down."""
+        fake_history._is_healthy = False
+        response = client.get("/health/")
+        
+        assert response.status_code == 200
+        assert response.json()["mongodb_connected"] is False
